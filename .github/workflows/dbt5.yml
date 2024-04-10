@@ -1,0 +1,48 @@
+---
+name: Create DBT-5 AppImage
+on:
+    workflow_dispatch:
+        inputs:
+            tag_name:
+                description: tag name
+                required: true
+                type: string
+jobs:
+    appimage:
+        runs-on: ubuntu-latest
+        steps:
+            - name: checkout dbt-5
+              uses: actions/checkout@v4
+              with:
+                  repository: "${{ github.repository_owner }}/dbt5"
+                  ref: "${{ inputs.tag_name }}"
+                  path: "${{ github.workspace }}/dbt5"
+            - name: create container for building appimage
+              run: |
+                  set -x
+                  sh -ex ${{ github.workspace }}/dbt5/tools/build-appimage-container
+            - name: create appimage
+              run: |
+                  set -x
+                  sh -ex ${{ github.workspace }}/dbt5/tools/build-appimage
+            - name: upload assets
+              working-directory: "${{ github.workspace }}/dbt5"
+              run: |
+                  set -x
+                  assets=()
+                  for asset in $(find .. -name '*.AppImage'); do
+                    assets+=("$asset")
+                    bname=$(basename "$asset")
+                    dname=$(dirname "$asset")
+                    (cd "$dname" && md5sum "$bname" > "${bname}.md5")
+                    (cd "$dname" && sha256sum "$bname" > "${bname}.sha256")
+                  done
+                  for asset in $(find . -name '*.md5'); do
+                    assets+=("$asset")
+                  done
+                  for asset in $(find . -name '*.sha256'); do
+                    assets+=("$asset")
+                  done
+                  gh release create ${{ inputs.tag_name }} ${assets[@]}
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
